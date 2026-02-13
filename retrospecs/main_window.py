@@ -235,18 +235,39 @@ class OverlayWindow(QWidget):
             screen = QApplication.screenAt(self.geometry().center())
             if screen is None:
                 screen = QApplication.primaryScreen()
+            # Bypass WM to guarantee exact screen coverage — without
+            # this, some window managers offset Tool windows.
+            self.setWindowFlags(
+                Qt.FramelessWindowHint
+                | Qt.WindowStaysOnTopHint
+                | Qt.X11BypassWindowManagerHint
+            )
+            self.setAttribute(Qt.WA_TranslucentBackground, True)
+            self.setAttribute(Qt.WA_NoSystemBackground, True)
             self.setGeometry(screen.geometry())
+            self.show()
             if self._resize_grip:
                 self._resize_grip.hide()
         else:
+            # Restore normal flags (Tool keeps it off the taskbar)
+            self.setWindowFlags(
+                Qt.FramelessWindowHint
+                | Qt.WindowStaysOnTopHint
+                | Qt.Tool
+            )
+            self.setAttribute(Qt.WA_TranslucentBackground, True)
+            self.setAttribute(Qt.WA_NoSystemBackground, True)
             if self._pre_fs_geom:
                 self.setGeometry(self._pre_fs_geom)
+            self.show()
             if self._resize_grip:
                 self._resize_grip.show()
                 self._resize_grip.sync_position()
+        # New native window after flag change — re-apply click-through
         set_click_through(self, True)
         if self._toolbar:
             self._toolbar.sync_position()
+            self._toolbar.raise_()
 
     @property
     def is_fullscreen(self):
