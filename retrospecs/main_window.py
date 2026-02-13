@@ -166,6 +166,7 @@ class OverlayWindow(QWidget):
     def __init__(self):
         super().__init__()
         self._toolbar = None
+        self._resize_grip = None
         self._resize_mode = False
         self._resize_edge = None
         self._resize_start = None
@@ -194,6 +195,9 @@ class OverlayWindow(QWidget):
 
     def set_toolbar(self, toolbar):
         self._toolbar = toolbar
+
+    def set_resize_grip(self, grip):
+        self._resize_grip = grip
 
     def set_shader(self, index):
         self.gl_widget.set_shader(index)
@@ -238,9 +242,9 @@ class OverlayWindow(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         if not self._resize_mode:
-            # Re-apply click-through every time the window is (re)shown,
-            # because some WMs reset the input shape on map.
             set_click_through(self, True)
+        if self._resize_grip:
+            self._resize_grip.sync_position()
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -292,6 +296,8 @@ class OverlayWindow(QWidget):
         self.gl_widget.cleanup()
         if self._toolbar:
             self._toolbar.close()
+        if self._resize_grip:
+            self._resize_grip.close()
         QApplication.quit()
         super().closeEvent(event)
 
@@ -361,3 +367,5 @@ class OverlayWindow(QWidget):
             self.setGeometry(geo)
             if self._toolbar:
                 self._toolbar.sync_position()
+            if self._resize_grip:
+                self._resize_grip.sync_position()

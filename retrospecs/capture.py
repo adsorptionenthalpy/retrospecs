@@ -65,8 +65,13 @@ class ScreenCapture:
             shot = self._mss.grab(monitor)
         except Exception:
             return None
+        # Use actual captured dimensions — may differ from requested
+        # due to DPI scaling or screen-edge clipping.
+        w, h = shot.width, shot.height
+        if w <= 0 or h <= 0:
+            return None
         frame = np.frombuffer(shot.raw, dtype=np.uint8).reshape(
-            (height, width, 4)
+            (h, w, 4)
         ).copy()
         # BGRA → RGBA
         frame[:, :, [0, 2]] = frame[:, :, [2, 0]]

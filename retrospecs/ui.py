@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QApplication,
     QSystemTrayIcon, QMenu, QAction,
 )
-from PyQt5.QtCore import Qt, QRect, QPoint
+from PyQt5.QtCore import Qt, QRect, QPoint, QSize
 from PyQt5.QtGui import QFont, QPainter, QColor, QPen, QIcon, QPixmap
 
 from retrospecs.shaders import SHADERS
@@ -128,6 +128,9 @@ class ToolbarWindow(QWidget):
     def _on_minimize(self):
         self._overlay.hide()
         self.hide()
+        grip = getattr(self._overlay, '_resize_grip', None)
+        if grip:
+            grip.hide()
 
     def _on_close(self):
         self._overlay.close()
@@ -146,6 +149,9 @@ class ToolbarWindow(QWidget):
             delta = event.globalPos() - self._drag_pos
             self._overlay.move(self._overlay_start + delta)
             self.move(self._toolbar_start + delta)
+            grip = getattr(self._overlay, '_resize_grip', None)
+            if grip:
+                grip.sync_position()
             event.accept()
 
     def mouseReleaseEvent(self, event):
@@ -161,6 +167,72 @@ class ToolbarWindow(QWidget):
         p.setPen(QPen(QColor(60, 60, 60, 150), 1))
         p.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 4, 4)
         p.end()
+
+
+# ---------------------------------------------------------------------------
+# Resize grip — small floating handle at the overlay's bottom-right corner
+# ---------------------------------------------------------------------------
+
+_GRIP_SIZE = 20
+
+
+class ResizeGrip(QWidget):
+    """Draggable resize grip at the bottom-right corner of the overlay."""
+
+    def __init__(self, overlay):
+        super().__init__()
+        self._overlay = overlay
+        self._drag_start = None
+        self._start_geom = None
+
+        self.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+            | Qt.Tool
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setFixedSize(_GRIP_SIZE, _GRIP_SIZE)
+        self.setCursor(Qt.SizeFDiagCursor)
+
+    def sync_position(self):
+        """Place the grip at the overlay's bottom-right corner."""
+        geo = self._overlay.geometry()
+        self.move(geo.right() - _GRIP_SIZE + 2, geo.bottom() - _GRIP_SIZE + 2)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, False)
+        pen = QPen(QColor(180, 180, 180, 200), 1)
+        p.setPen(pen)
+        # Three diagonal grip lines
+        for i in range(3):
+            off = 5 + i * 5
+            p.drawLine(self.width() - 3, off, off, self.height() - 3)
+        p.end()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_start = event.globalPos()
+            self._start_geom = self._overlay.geometry()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self._drag_start and event.buttons() & Qt.LeftButton:
+            delta = event.globalPos() - self._drag_start
+            geo = QRect(self._start_geom)
+            geo.setRight(geo.right() + delta.x())
+            geo.setBottom(geo.bottom() + delta.y())
+            if geo.width() >= 200 and geo.height() >= 150:
+                self._overlay.setGeometry(geo)
+                self.sync_position()
+                toolbar = getattr(self._overlay, '_toolbar', None)
+                if toolbar:
+                    toolbar.sync_position()
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_start = None
+        event.accept()
 
 
 # ---------------------------------------------------------------------------
@@ -204,13 +276,19 @@ class TrayIcon(QSystemTrayIcon):
         self.activated.connect(self._on_activated)
 
     def _toggle_visibility(self):
+        grip = getattr(self._overlay, '_resize_grip', None)
         if self._overlay.isVisible():
             self._overlay.hide()
             self._toolbar.hide()
+            if grip:
+                grip.hide()
         else:
             self._overlay.show()
             self._toolbar.show()
             self._toolbar.sync_position()
+            if grip:
+                grip.show()
+                grip.sync_position()
 
     def _on_activated(self, reason):
         if reason == QSystemTrayIcon.Trigger:

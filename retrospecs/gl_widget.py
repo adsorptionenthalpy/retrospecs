@@ -39,7 +39,7 @@ from retrospecs.shaders import VERTEX_SHADER, SHADERS
 
 # Delay (ms) between hiding the windows and capturing the screen.
 # Gives the compositor time to process the opacity change.
-_CAPTURE_DELAY_MS = 8
+_CAPTURE_DELAY_MS = 20
 
 
 class GLWidget(QOpenGLWidget):
@@ -58,6 +58,8 @@ class GLWidget(QOpenGLWidget):
         self._tex_height = 0
         self._start_time = time.monotonic()
         self._pending_frame = None
+        self._viewport_w = 0
+        self._viewport_h = 0
 
         self._loc_texture = -1
         self._loc_resolution = -1
@@ -145,6 +147,8 @@ class GLWidget(QOpenGLWidget):
 
     def resizeGL(self, w, h):
         glViewport(0, 0, w, h)
+        self._viewport_w = w
+        self._viewport_h = h
         self._tex_width = 0
         self._tex_height = 0
 
@@ -165,7 +169,7 @@ class GLWidget(QOpenGLWidget):
                 glUniform1i(self._loc_texture, 0)
             if self._loc_resolution >= 0:
                 glUniform2f(self._loc_resolution,
-                            float(self._tex_width), float(self._tex_height))
+                            float(self._viewport_w), float(self._viewport_h))
             if self._loc_time >= 0:
                 glUniform1f(self._loc_time, time.monotonic() - self._start_time)
 
@@ -241,15 +245,18 @@ class GLWidget(QOpenGLWidget):
             return
 
         if self._capture.needs_hide:
-            # mss mode: hide overlay + toolbar, wait for compositor, capture
+            # mss mode: hide overlay + toolbar + grip, wait for compositor, capture
             self._capturing = True
             self._cap_region = (x, y, w, h)
             overlay = self.window()
             toolbar = getattr(overlay, '_toolbar', None)
+            grip = getattr(overlay, '_resize_grip', None)
 
             overlay.setWindowOpacity(0.0)
             if toolbar and toolbar.isVisible():
                 toolbar.setWindowOpacity(0.0)
+            if grip and grip.isVisible():
+                grip.setWindowOpacity(0.0)
 
             QApplication.processEvents()
             QTimer.singleShot(_CAPTURE_DELAY_MS, self._finish_mss_capture)
@@ -269,9 +276,12 @@ class GLWidget(QOpenGLWidget):
         # Restore visibility
         overlay = self.window()
         toolbar = getattr(overlay, '_toolbar', None)
+        grip = getattr(overlay, '_resize_grip', None)
         overlay.setWindowOpacity(1.0)
         if toolbar:
             toolbar.setWindowOpacity(1.0)
+        if grip:
+            grip.setWindowOpacity(1.0)
 
         if frame is not None:
             self._pending_frame = frame

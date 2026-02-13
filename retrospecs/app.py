@@ -34,13 +34,16 @@ def main():
     app.setQuitOnLastWindowClosed(False)  # tray icon keeps app alive
 
     from retrospecs.main_window import OverlayWindow
-    from retrospecs.ui import ToolbarWindow, TrayIcon
+    from retrospecs.ui import ToolbarWindow, TrayIcon, ResizeGrip
 
     overlay = OverlayWindow()
     shader_index = overlay.load_settings()
 
     toolbar = ToolbarWindow(overlay)
     overlay.set_toolbar(toolbar)
+
+    grip = ResizeGrip(overlay)
+    overlay.set_resize_grip(grip)
 
     tray = TrayIcon(overlay, toolbar)
     tray.show()
@@ -49,6 +52,8 @@ def main():
     overlay.enable_click_through()
     toolbar.show()
     toolbar.sync_position()
+    grip.show()
+    grip.sync_position()
 
     overlay.set_shader(shader_index)
     overlay.start()
