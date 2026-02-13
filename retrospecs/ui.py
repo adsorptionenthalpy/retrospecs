@@ -73,14 +73,14 @@ class ToolbarWindow(QWidget):
 
         layout.addStretch()
 
-        # Resize-mode toggle
-        self._btn_resize = QPushButton("\u2922", self)  # ⤢
-        self._btn_resize.setFixedSize(22, 20)
-        self._btn_resize.setCheckable(True)
-        self._btn_resize.setToolTip("Toggle resize mode (Escape to exit)")
-        self._btn_resize.setStyleSheet(_ctrl_style())
-        self._btn_resize.clicked.connect(self._on_resize_toggle)
-        layout.addWidget(self._btn_resize)
+        # Fullscreen toggle
+        self._btn_fullscreen = QPushButton("\u2922", self)  # ⤢
+        self._btn_fullscreen.setFixedSize(22, 20)
+        self._btn_fullscreen.setCheckable(True)
+        self._btn_fullscreen.setToolTip("Toggle fullscreen (F11)")
+        self._btn_fullscreen.setStyleSheet(_ctrl_style())
+        self._btn_fullscreen.clicked.connect(self._on_fullscreen_toggle)
+        layout.addWidget(self._btn_fullscreen)
 
         # Minimize
         btn_min = QPushButton("\u2013", self)  # –
@@ -121,9 +121,9 @@ class ToolbarWindow(QWidget):
         self.set_active_shader(index)
         self._overlay.set_shader(index)
 
-    def _on_resize_toggle(self):
-        self._overlay.toggle_resize_mode()
-        self._btn_resize.setChecked(self._overlay.resize_mode)
+    def _on_fullscreen_toggle(self):
+        self._overlay.toggle_fullscreen()
+        self._btn_fullscreen.setChecked(self._overlay.is_fullscreen)
 
     def _on_minimize(self):
         self._overlay.hide()
@@ -134,6 +134,13 @@ class ToolbarWindow(QWidget):
 
     def _on_close(self):
         self._overlay.close()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_F11:
+            self._on_fullscreen_toggle()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     # -- Drag handling (moves both toolbar + overlay) ------------------------
 

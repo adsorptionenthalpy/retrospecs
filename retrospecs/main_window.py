@@ -171,6 +171,8 @@ class OverlayWindow(QWidget):
         self._resize_edge = None
         self._resize_start = None
         self._resize_geom = None
+        self._fullscreen = False
+        self._pre_fs_geom = None
 
         self.setWindowFlags(
             Qt.FramelessWindowHint
@@ -220,6 +222,35 @@ class OverlayWindow(QWidget):
         self.move(pos)
         self.resize(size)
         return shader
+
+    # -- Fullscreen ----------------------------------------------------------
+
+    def toggle_fullscreen(self):
+        """Toggle between windowed and full-screen overlay."""
+        if self._resize_mode:
+            self.toggle_resize_mode()
+        self._fullscreen = not self._fullscreen
+        if self._fullscreen:
+            self._pre_fs_geom = self.geometry()
+            screen = QApplication.screenAt(self.geometry().center())
+            if screen is None:
+                screen = QApplication.primaryScreen()
+            self.setGeometry(screen.geometry())
+            if self._resize_grip:
+                self._resize_grip.hide()
+        else:
+            if self._pre_fs_geom:
+                self.setGeometry(self._pre_fs_geom)
+            if self._resize_grip:
+                self._resize_grip.show()
+                self._resize_grip.sync_position()
+        set_click_through(self, True)
+        if self._toolbar:
+            self._toolbar.sync_position()
+
+    @property
+    def is_fullscreen(self):
+        return self._fullscreen
 
     # -- Resize mode ---------------------------------------------------------
 
@@ -285,6 +316,10 @@ class OverlayWindow(QWidget):
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event):
+        if event.key() == Qt.Key_F11:
+            self.toggle_fullscreen()
+            event.accept()
+            return
         if event.key() == Qt.Key_Escape and self._resize_mode:
             self.toggle_resize_mode()
             event.accept()
