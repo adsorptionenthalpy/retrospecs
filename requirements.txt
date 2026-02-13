@@ -1,0 +1,4 @@
+PyQt5>=5.12
+PyOpenGL>=3.1.5
+numpy>=1.19
+mss>=6.0
