@@ -26,6 +26,59 @@ MSS_SRC="$(python3 -c 'import mss, os; print(os.path.dirname(mss.__file__))')"
 cp -r "$MSS_SRC" "$BUILD_DIR/opt/retrospecs/vendor/mss"
 find "$BUILD_DIR/opt/retrospecs/vendor" -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
+echo "==> Patching mss for Python 3.6–3.8 compatibility"
+# models.py uses dict[], list[], tuple[] (Python 3.9+) at module level;
+# replace with typing equivalents so the aliases work at runtime.
+python3 -c "
+import pathlib, re
+
+vendor = pathlib.Path('$BUILD_DIR/opt/retrospecs/vendor/mss')
+
+# --- models.py: fix runtime type aliases ---
+models = vendor / 'models.py'
+src = models.read_text()
+src = src.replace('from typing import Any, NamedTuple',
+                  'from typing import Any, Dict, List, NamedTuple, Tuple')
+src = src.replace('Monitor = dict[str, int]',      'Monitor = Dict[str, int]')
+src = src.replace('Monitors = list[Monitor]',       'Monitors = List[Monitor]')
+src = src.replace('Pixel = tuple[int, int, int]',   'Pixel = Tuple[int, int, int]')
+src = src.replace('Pixels = list[tuple[Pixel, ...]]','Pixels = List[Tuple[Pixel, ...]]')
+src = re.sub(
+    r'CFunctions = dict\[str, tuple\[str, list\[Any\], Any\]\]',
+    'CFunctions = Dict[str, Tuple[str, List[Any], Any]]',
+    src,
+)
+models.write_text(src)
+
+# --- all .py files: add 'from __future__ import annotations' ---
+# This makes function annotations lazy strings, fixing dict[], X | Y, etc.
+for py in vendor.glob('*.py'):
+    text = py.read_text()
+    if 'from __future__ import annotations' in text:
+        continue
+    # Insert after the module docstring or at the very top
+    lines = text.split('\n')
+    insert_at = 0
+    # Skip shebang
+    if lines and lines[0].startswith('#!'):
+        insert_at = 1
+    # Skip module docstring
+    if insert_at < len(lines):
+        stripped = lines[insert_at].strip()
+        if stripped.startswith('\"\"\"'):
+            if stripped.endswith('\"\"\"') and stripped.count('\"\"\"') >= 2:
+                insert_at += 1
+            else:
+                for j in range(insert_at + 1, len(lines)):
+                    if '\"\"\"' in lines[j]:
+                        insert_at = j + 1
+                        break
+    lines.insert(insert_at, 'from __future__ import annotations')
+    py.write_text('\n'.join(lines))
+
+print('  patched', len(list(vendor.glob('*.py'))), 'files')
+"
+
 echo "==> Writing DEBIAN/control"
 cat > "$BUILD_DIR/DEBIAN/control" <<'CTRL'
 Package: retrospecs
