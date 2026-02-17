@@ -195,7 +195,7 @@ void main() {
 """
 
 # ---------------------------------------------------------------------------
-# 5. Retro Mono — green phosphor + glow + heavy scanlines + flicker
+# 5. Monochrome B&W — greyscale phosphor + glow + heavy scanlines + flicker
 # ---------------------------------------------------------------------------
 FRAG_MONO = """
 #version 330 core
@@ -213,8 +213,62 @@ void main() {
     // Convert to luminance
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
 
-    // Apply green phosphor color (P1 phosphor)
-    vec3 green = vec3(0.1, 1.0, 0.2) * lum;
+    // Greyscale (white phosphor)
+    vec3 mono = vec3(0.85, 0.85, 0.9) * lum;
+
+    // Glow/bloom
+    vec2 px = 1.0 / uResolution;
+    float bloom_lum = 0.0;
+    for (int dx = -2; dx <= 2; dx++) {
+        for (int dy = -2; dy <= 2; dy++) {
+            vec3 s = texture(uTexture, vTexCoord + vec2(float(dx), float(dy)) * px).rgb;
+            bloom_lum += dot(s, vec3(0.299, 0.587, 0.114));
+        }
+    }
+    bloom_lum /= 25.0;
+    vec3 glow = vec3(0.85, 0.85, 0.9) * bloom_lum;
+    mono = mix(mono, glow, 0.3);
+
+    // Heavy scanlines
+    float scan = sin(vTexCoord.y * uResolution.y * 1.57080) * 0.5 + 0.5;
+    mono *= mix(0.45, 1.0, scan);
+
+    // Flicker
+    float flicker = 0.97 + 0.03 * sin(uTime * 8.0);
+    mono *= flicker;
+
+    // Vignette
+    vec2 uv = vTexCoord * 2.0 - 1.0;
+    float vig = 1.0 - dot(uv * 0.6, uv * 0.6);
+    mono *= clamp(vig, 0.0, 1.0);
+
+    mono *= 1.3;
+
+    FragColor = vec4(mono, 1.0);
+}
+"""
+
+# ---------------------------------------------------------------------------
+# 6. Green Mono — green phosphor (P1) + glow + heavy scanlines + flicker
+# ---------------------------------------------------------------------------
+FRAG_GREEN = """
+#version 330 core
+
+in vec2 vTexCoord;
+out vec4 FragColor;
+
+uniform sampler2D uTexture;
+uniform vec2 uResolution;
+uniform float uTime;
+
+void main() {
+    vec3 col = texture(uTexture, vTexCoord).rgb;
+
+    // Convert to luminance
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+
+    // Green phosphor color (P1 phosphor)
+    vec3 mono = vec3(0.1, 1.0, 0.2) * lum;
 
     // Glow/bloom
     vec2 px = 1.0 / uResolution;
@@ -227,24 +281,132 @@ void main() {
     }
     bloom_lum /= 25.0;
     vec3 glow = vec3(0.1, 1.0, 0.2) * bloom_lum;
-    green = mix(green, glow, 0.3);
+    mono = mix(mono, glow, 0.3);
 
     // Heavy scanlines
     float scan = sin(vTexCoord.y * uResolution.y * 1.57080) * 0.5 + 0.5;
-    green *= mix(0.45, 1.0, scan);
+    mono *= mix(0.45, 1.0, scan);
 
     // Flicker
     float flicker = 0.97 + 0.03 * sin(uTime * 8.0);
-    green *= flicker;
+    mono *= flicker;
 
     // Vignette
     vec2 uv = vTexCoord * 2.0 - 1.0;
     float vig = 1.0 - dot(uv * 0.6, uv * 0.6);
-    green *= clamp(vig, 0.0, 1.0);
+    mono *= clamp(vig, 0.0, 1.0);
 
-    green *= 1.3;
+    mono *= 1.3;
 
-    FragColor = vec4(green, 1.0);
+    FragColor = vec4(mono, 1.0);
+}
+"""
+
+# ---------------------------------------------------------------------------
+# 7. Red Mono — red phosphor + glow + heavy scanlines + flicker
+# ---------------------------------------------------------------------------
+FRAG_RED = """
+#version 330 core
+
+in vec2 vTexCoord;
+out vec4 FragColor;
+
+uniform sampler2D uTexture;
+uniform vec2 uResolution;
+uniform float uTime;
+
+void main() {
+    vec3 col = texture(uTexture, vTexCoord).rgb;
+
+    // Convert to luminance
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+
+    // Red phosphor color
+    vec3 mono = vec3(1.0, 0.1, 0.05) * lum;
+
+    // Glow/bloom
+    vec2 px = 1.0 / uResolution;
+    float bloom_lum = 0.0;
+    for (int dx = -2; dx <= 2; dx++) {
+        for (int dy = -2; dy <= 2; dy++) {
+            vec3 s = texture(uTexture, vTexCoord + vec2(float(dx), float(dy)) * px).rgb;
+            bloom_lum += dot(s, vec3(0.299, 0.587, 0.114));
+        }
+    }
+    bloom_lum /= 25.0;
+    vec3 glow = vec3(1.0, 0.1, 0.05) * bloom_lum;
+    mono = mix(mono, glow, 0.3);
+
+    // Heavy scanlines
+    float scan = sin(vTexCoord.y * uResolution.y * 1.57080) * 0.5 + 0.5;
+    mono *= mix(0.45, 1.0, scan);
+
+    // Flicker
+    float flicker = 0.97 + 0.03 * sin(uTime * 8.0);
+    mono *= flicker;
+
+    // Vignette
+    vec2 uv = vTexCoord * 2.0 - 1.0;
+    float vig = 1.0 - dot(uv * 0.6, uv * 0.6);
+    mono *= clamp(vig, 0.0, 1.0);
+
+    mono *= 1.3;
+
+    FragColor = vec4(mono, 1.0);
+}
+"""
+
+# ---------------------------------------------------------------------------
+# 8. Amber Mono — amber phosphor (P3) + glow + heavy scanlines + flicker
+# ---------------------------------------------------------------------------
+FRAG_AMBER = """
+#version 330 core
+
+in vec2 vTexCoord;
+out vec4 FragColor;
+
+uniform sampler2D uTexture;
+uniform vec2 uResolution;
+uniform float uTime;
+
+void main() {
+    vec3 col = texture(uTexture, vTexCoord).rgb;
+
+    // Convert to luminance
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+
+    // Amber phosphor color (P3 phosphor)
+    vec3 mono = vec3(1.0, 0.68, 0.0) * lum;
+
+    // Glow/bloom
+    vec2 px = 1.0 / uResolution;
+    float bloom_lum = 0.0;
+    for (int dx = -2; dx <= 2; dx++) {
+        for (int dy = -2; dy <= 2; dy++) {
+            vec3 s = texture(uTexture, vTexCoord + vec2(float(dx), float(dy)) * px).rgb;
+            bloom_lum += dot(s, vec3(0.299, 0.587, 0.114));
+        }
+    }
+    bloom_lum /= 25.0;
+    vec3 glow = vec3(1.0, 0.68, 0.0) * bloom_lum;
+    mono = mix(mono, glow, 0.3);
+
+    // Heavy scanlines
+    float scan = sin(vTexCoord.y * uResolution.y * 1.57080) * 0.5 + 0.5;
+    mono *= mix(0.45, 1.0, scan);
+
+    // Flicker
+    float flicker = 0.97 + 0.03 * sin(uTime * 8.0);
+    mono *= flicker;
+
+    // Vignette
+    vec2 uv = vTexCoord * 2.0 - 1.0;
+    float vig = 1.0 - dot(uv * 0.6, uv * 0.6);
+    mono *= clamp(vig, 0.0, 1.0);
+
+    mono *= 1.3;
+
+    FragColor = vec4(mono, 1.0);
 }
 """
 
@@ -275,9 +437,27 @@ SHADERS = [
         "description": "Vertical RGB stripes (Trinitron style)",
     },
     {
-        "name": "Retro Mono",
+        "name": "Monochrome",
         "short": "MON",
         "fragment": FRAG_MONO,
-        "description": "Green phosphor with glow and flicker",
+        "description": "Greyscale black & white TV",
+    },
+    {
+        "name": "Green Mono",
+        "short": "GRN",
+        "fragment": FRAG_GREEN,
+        "description": "Green phosphor (P1) with glow and flicker",
+    },
+    {
+        "name": "Red Mono",
+        "short": "RED",
+        "fragment": FRAG_RED,
+        "description": "Red phosphor with glow and flicker",
+    },
+    {
+        "name": "Amber Mono",
+        "short": "ABR",
+        "fragment": FRAG_AMBER,
+        "description": "Amber phosphor (P3) with glow and flicker",
     },
 ]
