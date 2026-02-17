@@ -107,7 +107,8 @@ Description: CRT shader overlay for your desktop
  Includes 5 shaders: basic scanlines, CRT curvature, phosphor grid,
  aperture grille, and retro green phosphor.
  .
- Supports Ubuntu 18.04 through 24.04 and Windows 10/11.
+ Supports Ubuntu 18.04 through 24.04, Windows 10/11, and
+ macOS 10.13 through 26 (High Sierra through Tahoe).
 CTRL
 
 echo "==> Writing launcher"

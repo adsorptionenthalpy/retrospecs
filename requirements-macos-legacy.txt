@@ -1,0 +1,7 @@
+# Pinned versions for macOS 10.13 (High Sierra) through macOS 10.15 (Catalina).
+# These older macOS versions require specific PyQt5 wheel versions.
+# For macOS 11+ (Big Sur and later, including Tahoe), use requirements.txt.
+PyQt5==5.15.2
+PyOpenGL==3.1.5
+numpy==1.21.6
+mss==6.1.0

@@ -100,6 +100,11 @@ class GLWidget(QOpenGLWidget):
 
         self._timer.start(1000 // self.TARGET_FPS)
 
+    def set_companion_windows(self, *qt_widgets):
+        """Tell the capture backend about companion windows to hide."""
+        if self._capture:
+            self._capture.set_companion_windows(*qt_widgets)
+
     def stop(self):
         self._timer.stop()
 

@@ -7,6 +7,7 @@ ToolbarWindow provides the interactive controls.
 Click-through is implemented at the OS level:
   Linux / X11  — XShapeCombineRectangles with ShapeInput (empty region)
   Windows      — WS_EX_TRANSPARENT + WS_EX_LAYERED extended style
+  macOS        — NSWindow setIgnoresMouseEvents:YES via ObjC runtime
 """
 
 import sys
@@ -147,6 +148,111 @@ def _set_click_through_win32(hwnd, enabled):
         print("Win32 click-through failed:", exc)
 
 
+def _set_click_through_macos(widget, enabled):
+    """Use NSWindow setIgnoresMouseEvents: to make/unmake click-through.
+
+    Works on macOS 10.13 (High Sierra) through macOS 26 (Tahoe).
+    Uses the Objective-C runtime directly to avoid a PyObjC dependency.
+    """
+    try:
+        objc = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.A.dylib")
+
+        objc.objc_msgSend.restype = ctypes.c_void_p
+        objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+
+        objc.sel_registerName.restype = ctypes.c_void_p
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+
+        objc.objc_getClass.restype = ctypes.c_void_p
+        objc.objc_getClass.argtypes = [ctypes.c_char_p]
+
+        # Get the NSView from the Qt widget's winId()
+        view_ptr = int(widget.winId())
+
+        # NSView -> window -> setIgnoresMouseEvents:
+        sel_window = objc.sel_registerName(b"window")
+        ns_window = objc.objc_msgSend(view_ptr, sel_window)
+        if not ns_window:
+            return
+
+        sel_set_ignores = objc.sel_registerName(b"setIgnoresMouseEvents:")
+        # Need BOOL argument (YES=1, NO=0)
+        send_bool = ctypes.cast(objc.objc_msgSend,
+                                ctypes.CFUNCTYPE(ctypes.c_void_p,
+                                                 ctypes.c_void_p,
+                                                 ctypes.c_void_p,
+                                                 ctypes.c_bool))
+        send_bool(ns_window, sel_set_ignores, enabled)
+    except Exception as exc:
+        print("macOS click-through failed:", exc)
+
+
+def _set_macos_window_level(widget, level=500):
+    """Set the NSWindow level and collection behaviour for always-on-top.
+
+    Qt.WindowStaysOnTopHint maps to NSModalPanelWindowLevel (8) on macOS,
+    which is above normal windows but can still lose focus and get hidden.
+    Setting a higher level (e.g. 500) plus the right collection behaviour
+    ensures the overlay:
+      - Stays above all other windows, even when the app is deactivated
+      - Appears on all Spaces / desktops
+      - Survives Expose / Mission Control
+      - Enables CGWindowListCreateImage to capture the desktop beneath it
+    """
+    try:
+        objc = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.A.dylib")
+
+        objc.objc_msgSend.restype = ctypes.c_void_p
+        objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+
+        objc.sel_registerName.restype = ctypes.c_void_p
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+
+        view_ptr = int(widget.winId())
+        sel_window = objc.sel_registerName(b"window")
+        ns_window = objc.objc_msgSend(view_ptr, sel_window)
+        if not ns_window:
+            return
+
+        # --- Set window level ---
+        sel_set_level = objc.sel_registerName(b"setLevel:")
+        send_level = ctypes.cast(
+            objc.objc_msgSend,
+            ctypes.CFUNCTYPE(ctypes.c_void_p,
+                             ctypes.c_void_p,
+                             ctypes.c_void_p,
+                             ctypes.c_long))
+        send_level(ns_window, sel_set_level, level)
+
+        # --- Set collection behaviour ---
+        # NSWindowCollectionBehaviorCanJoinAllSpaces  = 1 << 0
+        # NSWindowCollectionBehaviorStationary        = 1 << 4
+        # NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
+        # NSWindowCollectionBehaviorIgnoresCycle      = 1 << 6
+        behaviour = (1 << 0) | (1 << 4) | (1 << 8) | (1 << 6)
+        sel_set_cb = objc.sel_registerName(b"setCollectionBehavior:")
+        send_cb = ctypes.cast(
+            objc.objc_msgSend,
+            ctypes.CFUNCTYPE(ctypes.c_void_p,
+                             ctypes.c_void_p,
+                             ctypes.c_void_p,
+                             ctypes.c_ulong))
+        send_cb(ns_window, sel_set_cb, behaviour)
+
+        # --- Prevent hiding when app is deactivated ---
+        sel_set_hod = objc.sel_registerName(b"setHidesOnDeactivate:")
+        send_bool = ctypes.cast(
+            objc.objc_msgSend,
+            ctypes.CFUNCTYPE(ctypes.c_void_p,
+                             ctypes.c_void_p,
+                             ctypes.c_void_p,
+                             ctypes.c_bool))
+        send_bool(ns_window, sel_set_hod, False)
+
+    except Exception as exc:
+        print("macOS window level failed:", exc)
+
+
 def set_click_through(widget, enabled):
     """Platform dispatcher: make *widget* click-through or interactive."""
     wid = int(widget.winId())
@@ -154,6 +260,8 @@ def set_click_through(widget, enabled):
         _set_click_through_x11(wid, enabled)
     elif sys.platform == "win32":
         _set_click_through_win32(wid, enabled)
+    elif sys.platform == "darwin":
+        _set_click_through_macos(widget, enabled)
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +281,7 @@ class OverlayWindow(QWidget):
         self._resize_geom = None
         self._fullscreen = False
         self._pre_fs_geom = None
+        self._macos_level_set = False
 
         self.setWindowFlags(
             Qt.FramelessWindowHint
@@ -213,6 +322,8 @@ class OverlayWindow(QWidget):
     def enable_click_through(self):
         """Apply OS-level click-through.  Call after show()."""
         set_click_through(self, True)
+        if sys.platform == "darwin":
+            _set_macos_window_level(self)
 
     def load_settings(self):
         """Restore window geometry and return saved shader index."""
@@ -237,11 +348,19 @@ class OverlayWindow(QWidget):
                 screen = QApplication.primaryScreen()
             # Bypass WM to guarantee exact screen coverage — without
             # this, some window managers offset Tool windows.
-            self.setWindowFlags(
-                Qt.FramelessWindowHint
-                | Qt.WindowStaysOnTopHint
-                | Qt.X11BypassWindowManagerHint
-            )
+            # On macOS, X11BypassWindowManagerHint is not available;
+            # FramelessWindowHint + WindowStaysOnTopHint is sufficient.
+            if sys.platform == "darwin":
+                self.setWindowFlags(
+                    Qt.FramelessWindowHint
+                    | Qt.WindowStaysOnTopHint
+                )
+            else:
+                self.setWindowFlags(
+                    Qt.FramelessWindowHint
+                    | Qt.WindowStaysOnTopHint
+                    | Qt.X11BypassWindowManagerHint
+                )
             self.setAttribute(Qt.WA_TranslucentBackground, True)
             self.setAttribute(Qt.WA_NoSystemBackground, True)
             self.setGeometry(screen.geometry())
@@ -265,6 +384,10 @@ class OverlayWindow(QWidget):
                 self._resize_grip.sync_position()
         # New native window after flag change — re-apply click-through
         set_click_through(self, True)
+        if sys.platform == "darwin":
+            self._macos_level_set = False  # force re-apply after flag change
+            _set_macos_window_level(self)
+            self._macos_level_set = True
         if self._toolbar:
             self._toolbar.sync_position()
             self._toolbar.raise_()
@@ -295,6 +418,9 @@ class OverlayWindow(QWidget):
         super().showEvent(event)
         if not self._resize_mode:
             set_click_through(self, True)
+        if sys.platform == "darwin" and not self._macos_level_set:
+            _set_macos_window_level(self)
+            self._macos_level_set = True
         if self._resize_grip:
             self._resize_grip.sync_position()
 

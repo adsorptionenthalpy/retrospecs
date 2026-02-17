@@ -1,15 +1,18 @@
-"""Screen capture — mss full-screen capture with window-capture fallback.
+"""Screen capture — platform-specific flicker-free capture with mss fallback.
 
-Two capture modes:
+Three capture modes:
 
-*  ``screen`` (default) — uses the ``mss`` library to grab the full
+*  ``screen`` (fallback) — uses the ``mss`` library to grab the full
    composited desktop.  The overlay and toolbar must be hidden first
    (``needs_hide`` is True) so they don't appear in the capture.
 
-*  ``window`` (Linux only, automatic) — uses ``WindowCapture`` to read
-   from the backing pixmap of the window directly below ours.  This is
-   flicker-free (``needs_hide`` is False) because the compositor's
-   backing store excludes our overlay.
+*  ``window`` (Linux / X11) — uses ``WindowCapture`` to read from the
+   backing pixmap of the window directly below ours.  Flicker-free
+   because the compositor's backing store excludes our overlay.
+
+*  ``macos`` (macOS) — uses ``MacOSCapture`` with CoreGraphics
+   ``CGWindowListCreateImage`` to capture everything on screen *below*
+   our window.  Flicker-free — no hide/show needed.
 """
 
 import sys
@@ -24,8 +27,14 @@ class ScreenCapture:
         self._qt_cap = None
         self._mss = None
 
-        # Try flicker-free window capture on Linux first
-        if own_window_id and sys.platform == "linux":
+        # Try flicker-free capture: platform-specific
+        if own_window_id and sys.platform == "darwin":
+            try:
+                from retrospecs.macos_capture import MacOSCapture
+                self._qt_cap = MacOSCapture(own_window_id)
+            except Exception as exc:
+                print("macOS capture unavailable (%s), using mss" % exc)
+        elif own_window_id and sys.platform == "linux":
             try:
                 from retrospecs.window_capture import WindowCapture
                 self._qt_cap = WindowCapture(own_window_id)
@@ -76,6 +85,15 @@ class ScreenCapture:
         # BGRA → RGBA
         frame[:, :, [0, 2]] = frame[:, :, [2, 0]]
         return frame
+
+    def set_companion_windows(self, *qt_widgets):
+        """Forward companion windows to the platform capture backend.
+
+        On macOS this tells MacOSCapture to orderOut the toolbar and grip
+        windows along with the overlay before each screen grab.
+        """
+        if self._qt_cap and hasattr(self._qt_cap, 'set_companion_windows'):
+            self._qt_cap.set_companion_windows(*qt_widgets)
 
     def close(self):
         if self._qt_cap:
