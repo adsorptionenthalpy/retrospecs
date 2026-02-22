@@ -34,6 +34,17 @@ class ScreenCapture:
                 self._qt_cap = MacOSCapture(own_window_id)
             except Exception as exc:
                 print("macOS capture unavailable (%s), using mss" % exc)
+        elif own_window_id and sys.platform == "win32":
+            try:
+                from retrospecs.win32_capture import Win32Capture
+                self._qt_cap = Win32Capture(own_window_id)
+                if self._qt_cap.needs_hide:
+                    print("Win32 WDA_EXCLUDEFROMCAPTURE not supported, "
+                          "falling back to mss hide/show")
+                    self._qt_cap.close()
+                    self._qt_cap = None
+            except Exception as exc:
+                print("Win32 capture unavailable (%s), using mss" % exc)
         elif own_window_id and sys.platform == "linux":
             try:
                 from retrospecs.window_capture import WindowCapture
