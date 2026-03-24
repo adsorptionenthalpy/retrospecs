@@ -346,43 +346,55 @@ class OverlayWindow(QWidget):
             screen = QApplication.screenAt(self.geometry().center())
             if screen is None:
                 screen = QApplication.primaryScreen()
-            # Bypass WM to guarantee exact screen coverage — without
-            # this, some window managers offset Tool windows.
-            # On macOS, X11BypassWindowManagerHint is not available;
-            # FramelessWindowHint + WindowStaysOnTopHint is sufficient.
-            if sys.platform == "darwin":
+            if sys.platform == "win32":
+                # On Windows, avoid setWindowFlags — it destroys the
+                # native window and kills the OpenGL context.  The
+                # existing flags (frameless + stays-on-top) work fine.
+                self.setGeometry(screen.geometry())
+            elif sys.platform == "darwin":
                 self.setWindowFlags(
                     Qt.FramelessWindowHint
                     | Qt.WindowStaysOnTopHint
                 )
+                self.setAttribute(Qt.WA_TranslucentBackground, True)
+                self.setAttribute(Qt.WA_NoSystemBackground, True)
+                self.setGeometry(screen.geometry())
+                self.show()
             else:
+                # Linux/X11 — bypass WM to guarantee exact screen coverage
                 self.setWindowFlags(
                     Qt.FramelessWindowHint
                     | Qt.WindowStaysOnTopHint
                     | Qt.X11BypassWindowManagerHint
                 )
-            self.setAttribute(Qt.WA_TranslucentBackground, True)
-            self.setAttribute(Qt.WA_NoSystemBackground, True)
-            self.setGeometry(screen.geometry())
-            self.show()
+                self.setAttribute(Qt.WA_TranslucentBackground, True)
+                self.setAttribute(Qt.WA_NoSystemBackground, True)
+                self.setGeometry(screen.geometry())
+                self.show()
             if self._resize_grip:
                 self._resize_grip.hide()
         else:
-            # Restore normal flags (Tool keeps it off the taskbar)
-            self.setWindowFlags(
-                Qt.FramelessWindowHint
-                | Qt.WindowStaysOnTopHint
-                | Qt.Tool
-            )
-            self.setAttribute(Qt.WA_TranslucentBackground, True)
-            self.setAttribute(Qt.WA_NoSystemBackground, True)
-            if self._pre_fs_geom:
-                self.setGeometry(self._pre_fs_geom)
-            self.show()
+            if sys.platform == "win32":
+                # Just restore geometry — no flag changes needed
+                if self._pre_fs_geom:
+                    self.setGeometry(self._pre_fs_geom)
+            else:
+                # Restore normal flags (Tool keeps it off the taskbar)
+                self.setWindowFlags(
+                    Qt.FramelessWindowHint
+                    | Qt.WindowStaysOnTopHint
+                    | Qt.Tool
+                )
+                self.setAttribute(Qt.WA_TranslucentBackground, True)
+                self.setAttribute(Qt.WA_NoSystemBackground, True)
+                if self._pre_fs_geom:
+                    self.setGeometry(self._pre_fs_geom)
+                self.show()
             if self._resize_grip:
                 self._resize_grip.show()
                 self._resize_grip.sync_position()
-        # New native window after flag change — re-apply click-through
+        # Re-apply click-through (needed after flag changes on non-Windows,
+        # and harmless on Windows where flags didn't change)
         set_click_through(self, True)
         if sys.platform == "darwin":
             self._macos_level_set = False  # force re-apply after flag change
@@ -395,6 +407,40 @@ class OverlayWindow(QWidget):
     @property
     def is_fullscreen(self):
         return self._fullscreen
+
+    def reduce_to_small(self):
+        """Reduce window to 640x480 and exit fullscreen if active."""
+        if self._fullscreen:
+            self._fullscreen = False
+            self.setWindowFlags(
+                Qt.FramelessWindowHint
+                | Qt.WindowStaysOnTopHint
+                | Qt.Tool
+            )
+            self.setAttribute(Qt.WA_TranslucentBackground, True)
+            self.setAttribute(Qt.WA_NoSystemBackground, True)
+            if self._resize_grip:
+                self._resize_grip.show()
+                self._resize_grip.sync_position()
+            set_click_through(self, True)
+            if sys.platform == "darwin":
+                self._macos_level_set = False
+                _set_macos_window_level(self)
+                self._macos_level_set = True
+        if self._resize_mode:
+            self.toggle_resize_mode()
+        screen = QApplication.screenAt(self.geometry().center())
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        sg = screen.geometry()
+        x = sg.x() + (sg.width() - 640) // 2
+        y = sg.y() + (sg.height() - 480) // 2
+        self.setGeometry(x, y, 640, 480)
+        self.show()
+        if self._toolbar:
+            self._toolbar.sync_position()
+            self._toolbar.raise_()
+            self._toolbar._btn_fullscreen.setChecked(False)
 
     # -- Resize mode ---------------------------------------------------------
 
@@ -463,8 +509,12 @@ class OverlayWindow(QWidget):
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_F11:
+        if event.key() == Qt.Key_F11 and event.modifiers() & Qt.ControlModifier:
             self.toggle_fullscreen()
+            event.accept()
+            return
+        if event.key() == Qt.Key_R and event.modifiers() & Qt.ControlModifier:
+            self.reduce_to_small()
             event.accept()
             return
         if event.key() == Qt.Key_Escape and self._resize_mode:

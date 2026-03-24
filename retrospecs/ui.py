@@ -77,7 +77,7 @@ class ToolbarWindow(QWidget):
         self._btn_fullscreen = QPushButton("\u2922", self)  # ⤢
         self._btn_fullscreen.setFixedSize(22, 20)
         self._btn_fullscreen.setCheckable(True)
-        self._btn_fullscreen.setToolTip("Toggle fullscreen (F11)")
+        self._btn_fullscreen.setToolTip("Toggle fullscreen (Ctrl+F11)")
         self._btn_fullscreen.setStyleSheet(_ctrl_style())
         self._btn_fullscreen.clicked.connect(self._on_fullscreen_toggle)
         layout.addWidget(self._btn_fullscreen)
@@ -136,8 +136,12 @@ class ToolbarWindow(QWidget):
         self._overlay.close()
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_F11:
+        if event.key() == Qt.Key_F11 and event.modifiers() & Qt.ControlModifier:
             self._on_fullscreen_toggle()
+            event.accept()
+            return
+        if event.key() == Qt.Key_R and event.modifiers() & Qt.ControlModifier:
+            self._overlay.reduce_to_small()
             event.accept()
             return
         super().keyPressEvent(event)
