@@ -412,13 +412,15 @@ class OverlayWindow(QWidget):
         """Reduce window to 640x480 and exit fullscreen if active."""
         if self._fullscreen:
             self._fullscreen = False
-            self.setWindowFlags(
-                Qt.FramelessWindowHint
-                | Qt.WindowStaysOnTopHint
-                | Qt.Tool
-            )
-            self.setAttribute(Qt.WA_TranslucentBackground, True)
-            self.setAttribute(Qt.WA_NoSystemBackground, True)
+            if sys.platform != "win32":
+                # On Windows skip setWindowFlags to preserve GL context
+                self.setWindowFlags(
+                    Qt.FramelessWindowHint
+                    | Qt.WindowStaysOnTopHint
+                    | Qt.Tool
+                )
+                self.setAttribute(Qt.WA_TranslucentBackground, True)
+                self.setAttribute(Qt.WA_NoSystemBackground, True)
             if self._resize_grip:
                 self._resize_grip.show()
                 self._resize_grip.sync_position()
